@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Loja hop — E-commerce Completo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{--accent:#e63946;--bg:#f7f7f8;--card:#ffffff;--muted:#6b6b6b}
+    *{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial;background:var(--bg);color:#222}
+    header{background:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ececec;flex-wrap:wrap}
+    .brand{font-weight:700;color:var(--accent);font-size:20px}
+    nav a{margin:0 10px;color:var(--accent);text-decoration:none;font-weight:600}
+    .search{flex:1;margin:10px 20px}
+    .search input{width:100%;padding:10px;border-radius:8px;border:1px solid #ddd}
+    .cart-btn{background:var(--accent);color:#fff;padding:10px 14px;border-radius:8px;border:none;cursor:pointer}
+
+    main{max-width:1100px;margin:28px auto;padding:0 16px}
+    section{margin-top:40px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 6px 18px rgba(20,20,20,0.06);display:flex;flex-direction:column}
+    .thumb{height:160px;border-radius:8px;background:#f1f1f1;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--muted);margin-bottom:10px}
+    .title{font-weight:600;margin-bottom:8px}
+    .price{margin-top:auto;font-weight:700}
+    .btn{background:var(--accent);color:#fff;border:none;padding:10px;border-radius:8px;cursor:pointer}
+    .btn.secondary{background:#fff;color:var(--accent);border:1px solid rgba(230,57,70,0.16)}
+
+    /* modal QR code */
+    .modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;visibility:hidden;opacity:0;transition:.3s;z-index:100}
+    .modal.show{visibility:visible;opacity:1}
+    .modal-content{background:#fff;padding:20px;border-radius:12px;text-align:center;width:300px}
+
+    /* cart drawer */
+    .drawer{position:fixed;right:0;top:0;height:100%;width:360px;transform:translateX(110%);transition:transform .28s;box-shadow:-18px 40px 60px rgba(10,10,10,0.12);background:#fff;padding:20px;z-index:50}
+    .drawer.open{transform:translateX(0)}
+    .cart-list{max-height:60vh;overflow:auto;margin-top:12px}
+    .cart-item{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #f0f0f0}
+    .cart-item img{width:56px;height:56px;border-radius:6px;object-fit:cover}
+
+    #map{height:300px;border-radius:12px;margin-top:10px}
+
+    footer{max-width:1100px;margin:40px auto 80px;padding:16px;color:var(--muted);text-align:center}
+  </style>
+</head>
+<body>
+  <header>
+      <div class="brand">Loja hop</div>
+    </div>
+    <nav>
+      <a href="#home">Início</a>
+      <a href="#sobre">Sobre</a>
+      <a href="#contato">Contato</a>
+    </nav>
+    <div class="search"><input id="search" placeholder="Buscar produtos..." /></div>
+    <button id="openCart" class="cart-btn">Carrinho (<span id="cartCount">0</span>)</button>
+  </header>
+
+  <main>
+    <!-- Página Inicial -->
+    <section id="home">
+      <h2>Produtos em destaque</h2>
+      <div class="grid" id="products"></div>
+      <div style="text-align:center;margin-top:20px"><button id="loadMore" class="btn secondary">Carregar mais produtos</button></div>
+    </section>
+
+    <!-- Gráficos -->
+    <section id="graficos">
+      <h3>Comparativo de vendas</h3>
+      <canvas id="salesChart"></canvas>
+    </section>
+
+    <!-- Sobre -->
+    <section id="sobre">
+      <h3>Sobre a Loja</h3>
+      <p>Somos uma loja virtual focada em oferecer produtos de qualidade com uma experiência de compra simples e segura.</p>
+      <div id="location">
+        <h4>Minha Localização</h4>
+        <p id="coords">Carregando localização...</p>
+        <div id="map"></div>
+      </div>
+    </section>
+
+    <!-- Contato -->
+    <section id="contato">
+      <h3>Fale Conosco</h3>
+      <form>
+        <input type="text" placeholder="Nome" required style="padding:8px;width:100%;margin-bottom:10px">
+        <input type="email" placeholder="E-mail" required style="padding:8px;width:100%;margin-bottom:10px">
+        <textarea placeholder="Mensagem" required style="padding:8px;width:100%;height:80px;margin-bottom:10px"></textarea>
+        <button type="submit" class="btn">Enviar</button>
+      </form>
+    </section>
+  </main>
+
+  <!-- Carrinho -->
+  <aside class="drawer" id="drawer">
+    <h3>Seu carrinho</h3>
+    <div id="cartEmpty" style="color:var(--muted);margin-top:6px">Seu carrinho está vazio.</div>
+    <div class="cart-list" id="cartList"></div>
+    <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-weight:600">Total</div>
+        <div id="cartTotal">R$ 0,00</div>
+      </div>
+      <div>
+        <button id="clearCart" class="btn secondary" type="button" title="Limpar carrinho" style="margin-right:8px">Limpar</button>
+        <button id="checkout" class="btn">Finalizar compra</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Modal QRCode -->
+  <div class="modal" id="qrcodeModal">
+    <div class="modal-content">
+      <h3>Pagamento via QRCode</h3>
+      <img id="qrcodeImg" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=Pagamento%20Simulado" alt="QR Code">
+      <br><br>
+      <button class="btn" id="closeModal">Fechar</button>
+    </div>
+  </div>
+
+  <footer>
+    <small>&copy; 2025 Minha Loja — Sistema completo com geolocalização, mapa, gráficos e carrinho.</small>
+  </footer>
+
+  <script>
+    // ======== Produtos ========
+    // Produtos (corrigido para não perder imagens ao "Carregar mais")
+    const PRODUCTS=[
+      {id:1,name:'Camiseta Básica',price:39.9,desc:'Malha 100% algodão',img:'img/camiseta.jpg.webp'},
+      {id:2,name:'Tênis Esportivo',price:199.0,desc:'Leve e confortável',img:'img/tenis.jpg'},
+      {id:3,name:'Mochila Urbana',price:129.5,desc:'Compartimento para laptop',img:'img/mochila.jpg'},
+      {id:4,name:'Relógio Minimal',price:249.0,desc:'À prova d\'água',img:'img/relogio.jpg.webp'},
+      {id:5,name:'Boné Snapback',price:59.9,desc:'Fecho ajustável',img:'img/bone.jpg'},
+      {id:6,name:'Jaqueta Jeans',price:179.0,desc:'Modelagem slim',img:'img/jaqueta.jpg'},
+      {id:7,name:'Calça Jogger',price:149.9,desc:'Tecido leve e moderno',img:'img/jogger.jpg.webp'},
+    ];
+
+    const formatBRL = v => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    const productsEl = document.getElementById('products');
+    let currentCount = Math.min(5, PRODUCTS.length);
+
+    function renderProducts(list){
+      productsEl.innerHTML = '';
+      list.slice(0, currentCount).forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      // usar interpolação correta e fallback via onerror para não perder imagens
+      card.innerHTML = `
+        <img class="thumb" src="${p.img}" alt="${p.name}"
+           onerror="this.onerror=null;this.src='https://via.placeholder.com/300x160?text=Produto';">
+        <div class="title">${p.name}</div>
+        <div style="color:var(--muted);font-size:13px">${p.desc}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+        <div class="price">${formatBRL(p.price)}</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" data-add="${p.id}">Adicionar</button>
+        </div>
+        </div>`;
+      productsEl.appendChild(card);
+      });
+
+      const loadBtn = document.getElementById('loadMore');
+      if (currentCount >= list.length) loadBtn.style.display = 'none';
+      else loadBtn.style.display = '';
+    }
+
+    renderProducts(PRODUCTS);
+
+    document.getElementById('loadMore').onclick = () => {
+      currentCount += 2;
+      if (currentCount > PRODUCTS.length) currentCount = PRODUCTS.length;
+      renderProducts(PRODUCTS);
+    };
+
+    // ======== Carrinho ========
+    let cart=JSON.parse(localStorage.getItem('cart_v3')||'{}');
+    const cartList=document.getElementById('cartList');
+    const cartCount=document.getElementById('cartCount');
+    const cartTotal=document.getElementById('cartTotal');
+    const cartEmpty=document.getElementById('cartEmpty');
+
+    function saveCart(){localStorage.setItem('cart_v3',JSON.stringify(cart));}
+    function updateCart(){
+      const keys=Object.keys(cart);
+      cartList.innerHTML='';
+      if(keys.length===0){cartEmpty.style.display='block';cartCount.textContent=0;cartTotal.textContent=formatBRL(0);return;}
+      cartEmpty.style.display='none';
+      let total=0,count=0;
+      keys.forEach(id=>{
+        const item=cart[id];count+=item.qty;total+=item.qty*item.price;
+        const div=document.createElement('div');div.className='cart-item';
+        div.innerHTML=`<div style='flex:1'><strong>${item.name}</strong><div>${formatBRL(item.price)}</div><div><button data-dec='${id}' class='btn secondary'>-</button> ${item.qty} <button data-inc='${id}' class='btn secondary'>+</button></div></div>`;
+        cartList.appendChild(div);
+      });
+      cartCount.textContent=count;cartTotal.textContent=formatBRL(total);saveCart();
+    }
+    updateCart();
+
+    document.body.addEventListener('click',e=>{
+      if(e.target.dataset.add){const id=e.target.dataset.add;const p=PRODUCTS.find(x=>x.id==id);if(!cart[id])cart[id]={...p,qty:0};cart[id].qty++;updateCart();}
+      if(e.target.dataset.inc){const id=e.target.dataset.inc;cart[id].qty++;updateCart();}
+      if(e.target.dataset.dec){const id=e.target.dataset.dec;cart[id].qty--;if(cart[id].qty<=0)delete cart[id];updateCart();}
+    });
+
+    // ======== Drawer e QRCode ========
+    const drawer=document.getElementById('drawer');
+    const modal=document.getElementById('qrcodeModal');
+    document.getElementById('openCart').onclick=()=>drawer.classList.add('open');
+    document.addEventListener('click',e=>{if(!drawer.contains(e.target)&&!e.target.closest('#openCart'))drawer.classList.remove('open');});
+    document.getElementById('checkout').onclick=()=>{if(Object.keys(cart).length===0)return alert('Carrinho vazio');modal.classList.add('show');setTimeout(()=>{alert('Pagamento simulado! Obrigado.');cart={};updateCart();drawer.classList.remove('open');modal.classList.remove('show');},8000);};
+    document.getElementById('closeModal').onclick=()=>modal.classList.remove('show');
+
+    // ======== Geolocalização + Mapa ========
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const {latitude,longitude}=pos.coords;
+      document.getElementById('coords').textContent=`Latitude: ${latitude.toFixed(4)}, Longitude: ${longitude.toFixed(4)}`;
+      const map=L.map('map').setView([latitude,longitude],13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+      L.marker([latitude,longitude]).addTo(map).bindPopup('Você está aqui!');
+    },()=>{document.getElementById('coords').textContent='Localização não disponível.';});
+
+    // ======== Gráficos ========
+    new Chart(document.getElementById('salesChart'),{
+      type:'bar',
+      data:{labels:['Jan','Fev','Mar','Abr','Mai','Jun'],datasets:[{label:'Camiseta Básica',data:[12,19,7,14,10,16],backgroundColor:'rgba(230,57,70,0.5)'},{label:'Tênis Esportivo',data:[9,15,13,10,14,12],backgroundColor:'rgba(100,149,237,0.5)'}]},
+      options:{responsive:true,plugins:{legend:{position:'bottom'}}}
+    });
+  </script>
+</body>
+</html>
+
+
